@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 declare -r -i MAX=3
 declare -A inventario
@@ -72,11 +72,8 @@ editar() {
     fi
 
     if [[ ${inventario[$id,activo]} -eq 1 ]]; then
-        declare precio_nuevo=""
         printf "Precio actual del producto %d: $%.2f\n" "$id" "${inventario[$id,precio]}"
-        read -rp "Ingrese el nuevo precio: " precio_nuevo
-        
-        inventario[$id,precio]=$precio_nuevo
+        read -rp "Ingrese el nuevo precio: " inventario[$id,precio]
         printf "Producto %d actualizado exitosamente.\n" "$id"
     else
         printf "El producto no existe o está dado de baja.\n"
