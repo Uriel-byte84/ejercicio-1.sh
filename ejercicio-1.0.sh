@@ -1,80 +1,96 @@
-Set-Content -Path "ejercicio-1.sh" -Value '#!/bin/bash
+#!/bin/bash
 
 ARCHIVO="productos.txt"
 
-editar_producto() {
-    echo "=============================="
-    echo "   EDITAR PRODUCTO EXISTENTE  "
-    echo "=============================="
-    
-    if [ ! -f "$ARCHIVO" ] || [ ! -s "$ARCHIVO" ]; then
-        echo "No hay productos registrados o el archivo no existe."
-        return
-    fi
+if ! command -v dialog &> /dev/null; then
+    echo "Error: La herramienta 'dialog' no está instalada. Ejecute: sudo apt install dialog"
+    exit 1
+fi
 
-    read -p "Ingrese el ID del producto que desea modificar: " id_buscado
+listar_productos() {
+    local temp_list=$(mktemp)
+    if [ -f "$ARCHIVO" ] && [ -s "$ARCHIVO" ]; then
+        echo -e "ID\tNOMBRE\tPRECIO" > "$temp_list"
+        cat "$ARCHIVO" >> "$temp_list"
+        dialog --title "Lista de Productos" --textbox "$temp_list" 15 50
+    else
+        dialog --title "Aviso" --msgbox "No hay productos registrados." 6 40
+    fi
+    rm -f "$temp_list"
+}
+
+agregar_producto() {
+    local temp_file=$(mktemp)
+    dialog --title "Agregar Producto" --form "Ingrese los datos:" 12 50 3 \
+        "ID:" 1 1 "" 1 10 15 0 \
+        "Nombre:" 2 1 "" 2 10 20 0 \
+        "Precio:" 3 1 "" 3 10 10 0 2> "$temp_file"
+
+    if [ $? -eq 0 ]; then
+        local id=$(sed -n '1p' "$temp_file")
+        local nombre=$(sed -n '2p' "$temp_file")
+        local precio=$(sed -n '3p' "$temp_file")
+        rm -f "$temp_file"
+
+        [ -z "$id" ] || [ -z "$nombre" ] || [ -z "$precio" ] && return
+
+        echo "$id:$nombre:$precio" >> "$ARCHIVO"
+        dialog --title "Éxito" --msgbox "¡Producto agregado exitosamente!" 6 40
+    else
+        rm -f "$temp_file"
+    fi
+}
+
+editar_producto() {
+    local temp_id=$(mktemp)
+    dialog --title "Editar Producto" --inputbox "Ingrese el ID del producto a modificar:" 8 40 2> "$temp_id"
+    local id_buscado=$(cat "$temp_id")
+    rm -f "$temp_id"
+    [ -z "$id_buscado" ] && return
 
     if ! grep -q "^$id_buscado:" "$ARCHIVO"; then
-        echo "Error: No se encontró ningún producto con el ID '\''$id_buscado'\''."
+        dialog --title "Error" --msgbox "No se encontró el producto con ID '$id_buscado'." 6 40
         return
     fi
 
-    echo "Producto actual encontrado:"
-    grep "^$id_buscado:" "$ARCHIVO"
-    echo "------------------------------"
+    local temp_file=$(mktemp)
+    dialog --title "Editar Producto" --form "Modifique los datos:" 12 50 2 \
+        "Nuevo Nombre:" 1 1 "" 1 15 20 0 \
+        "Nuevo Precio:" 2 1 "" 2 15 10 0 2> "$temp_file"
 
-    read -p "Ingrese el nuevo nombre del producto: " nuevo_nombre
-    read -p "Ingrese el nuevo precio del producto: " nuevo_precio
+    if [ $? -eq 0 ]; then
+        local nuevo_nombre=$(sed -n '1p' "$temp_file")
+        local nuevo_precio=$(sed -n '2p' "$temp_file")
+        rm -f "$temp_file"
 
-    temp_file=$(mktemp)
-
-    while IFS=: read -r id nombre precio; do
-        if [ "$id" == "$id_buscado" ]; then
-            echo "$id:$nuevo_nombre:$nuevo_precio" >> "$temp_file"
-        else
-            echo "$id:$nombre:$precio" >> "$temp_file"
-        fi
-    done < "$ARCHIVO"
-
-    mv "$temp_file" "$ARCHIVO"
-    echo "¡Producto actualizado exitosamente!"
+        local temp_temp=$(mktemp)
+        while IFS=: read -r id nombre precio; do
+            if [ "$id" == "$id_buscado" ]; then
+                echo "$id:$nuevo_nombre:$nuevo_precio" >> "$temp_temp"
+            else
+                echo "$id:$nombre:$precio" >> "$temp_temp"
+            fi
+        done < "$ARCHIVO"
+        mv "$temp_temp" "$ARCHIVO"
+        dialog --title "Éxito" --msgbox "¡Producto actualizado exitosamente!" 6 40
+    else
+        rm -f "$temp_file"
+    fi
 }
 
 while true; do
-    echo ""
-    echo "--- MENÚ ABM DE PRODUCTOS ---"
-    echo "1. Listar productos"
-    echo "2. Agregar producto"
-    echo "3. Editar un producto existente"
-    echo "4. Salir"
-    read -p "Seleccione una opción: " opcion
+    choice=$(dialog --clear --title "Menú Ejercicio 1 (TUI)" \
+        --menu "Seleccione una opción:" 15 50 4 \
+        "1" "Listar productos" \
+        "2" "Agregar producto" \
+        "3" "Editar producto" \
+        "4" "Salir" 2>&1 >/dev/tty)
 
-    case $opcion in
-        1)
-            if [ -f "$ARCHIVO" ] && [ -s "$ARCHIVO" ]; then
-                echo ""
-                echo "--- LISTA DE PRODUCTOS ---"
-                cat "$ARCHIVO"
-            else
-                echo "No hay productos registrados."
-            fi
-            ;;
-        2)
-            read -p "Ingrese ID: " id
-            read -p "Ingrese Nombre: " nombre
-            read -p "Ingrese Precio: " precio
-            echo "$id:$nombre:$precio" >> "$ARCHIVO"
-            echo "¡Producto agregado exitosamente!"
-            ;;
-        3)
-            editar_producto
-            ;;
-        4)
-            echo "Saliendo del programa..."
-            exit 0
-            ;;
-        *)
-            echo "Opción inválida. Intente nuevamente."
-            ;;
+    case $choice in
+        1) listar_productos ;;
+        2) agregar_producto ;;
+        3) editar_producto ;;
+        4) clear; exit 0 ;;
+        *) clear; exit 0 ;;
     esac
 done
