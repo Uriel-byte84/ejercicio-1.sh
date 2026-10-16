@@ -1,8 +1,74 @@
 #!/bin/bash
 
 ARCHIVO="productos.tsv"
+ARCHIVO_USUARIOS="usuarios.tsv"
 
-# Función para dar de alta (agregar) un producto validando que no exista el ID
+# ==========================================
+# SECCIÓN DE AUTENTICACIÓN Y USUARIOS
+# ==========================================
+
+registrar_usuario() {
+    echo "=============================="
+    echo "      REGISTRO DE USUARIO     "
+    echo "=============================="
+    
+    read -p "Ingrese nombre de usuario: " nuevo_user
+    
+    # Validar si el usuario ya existe
+    if [ -f "$ARCHIVO_USUARIOS" ] && grep -q "^$newUser\t" "$ARCHIVO_USUARIOS"; then
+        echo "Error: El usuario '$nuevo_user' ya existe."
+        return
+    fi
+
+    # Solicitar contraseña de forma oculta (-s)
+    read -s -p "Ingrese contraseña: " password
+    echo ""
+    
+    # Cifrar la contraseña usando sha256sum
+    pass_hash=$(echo -n "$password" | sha256sum | awk '{print $1}')
+
+    # Guardar en usuarios.tsv (usuario y hash separados por tabulador)
+    echo -e "$nuevo_user\t$pass_hash" >> "$ARCHIVO_USUARIOS"
+    echo "¡Usuario registrado exitosamente!"
+}
+
+iniciar_sesion() {
+    echo "=============================="
+    echo "        INICIAR SESIÓN        "
+    echo "=============================="
+    
+    if [ ! -f "$ARCHIVO_USUARIOS" ] || [ ! -s "$ARCHIVO_USUARIOS" ]; then
+        echo "No hay usuarios registrados. Debe registrarse primero."
+        return 1
+    fi
+
+    read -p "Usuario: " user_ingresado
+    read -s -p "Contraseña: " pass_ingresada
+    echo ""
+
+    # Cifrar la contraseña ingresada para compararla con el hash guardado
+    hash_ingresado=$(echo -n "$pass_ingresada" | sha256sum | awk '{print $1}')
+
+    # Buscar coincidencia en el archivo usuarios.tsv
+    while IFS=$'\t' read -r user pass_guardado; do
+        # Limpiar posibles espacios o retornos de carro
+        user=$(echo "$user" | tr -d '\r')
+        pass_guardado=$(echo "$pass_guardado" | tr -d '\r')
+        
+        if [ "$user" == "$user_ingresado" ] && [ "$pass_guardado" == "$hash_ingresado" ]; then
+            echo "¡Inicio de sesión exitoso. Bienvenido, $user!"
+            return 0
+        fi
+    done < "$ARCHIVO_USUARIOS"
+
+    echo "Error: Usuario o contraseña incorrectos."
+    return 1
+}
+
+# ==========================================
+# SECCIÓN DE PRODUCTOS (ABM Y REPORTE)
+# ==========================================
+
 agregar_producto() {
     echo "=============================="
     echo "      AGREGAR PRODUCTO        "
@@ -10,7 +76,6 @@ agregar_producto() {
     
     read -p "Ingrese el ID del producto: " id
     
-    # Validar si el archivo existe y si el ID ya fue registrado
     if [ -f "$ARCHIVO" ] && grep -q "^$id\t" "$ARCHIVO"; then
         echo "Error: Ya existe un producto con el ID '$id'."
         return
@@ -19,12 +84,10 @@ agregar_producto() {
     read -p "Ingrese el nombre del producto: " nombre
     read -p "Ingrese el precio del producto: " precio
 
-    # Guardar en formato TSV (separado por tabulador \t)
     echo -e "$id\t$nombre\t$precio" >> "$ARCHIVO"
     echo "¡Producto agregado exitosamente!"
 }
 
-# Función para editar un producto existente
 editar_producto() {
     echo "=============================="
     echo "   EDITAR PRODUCTO EXISTENTE  "
@@ -63,7 +126,6 @@ editar_producto() {
     echo "¡Producto actualizado exitosamente!"
 }
 
-# Función para listar los productos en consola
 listar_productos() {
     if [ -f "$ARCHIVO" ] && [ -s "$ARCHIVO" ]; then
         echo ""
@@ -78,7 +140,6 @@ listar_productos() {
     fi
 }
 
-# Función para generar el reporte HTML (Punto 1)
 generar_html() {
     local html_file="productos.html"
     
@@ -124,36 +185,55 @@ EOF
     echo "¡Reporte 'productos.html' generado exitosamente!"
 }
 
-# Menú principal
+# ==========================================
+# MENÚ DE AUTENTICACIÓN INICIAL
+# ==========================================
+
 while true; do
     echo ""
-    echo "--- MENÚ ABM DE PRODUCTOS (TSV) ---"
-    echo "1. Listar productos"
-    echo "2. Agregar producto"
-    echo "3. Editar un producto existente"
-    echo "4. Generar reporte HTML"
-    echo "5. Salir"
-    read -p "Seleccione una opción: " opcion
+    echo "--- SISTEMA DE ACCESO ---"
+    echo "1. Iniciar sesión"
+    echo "2. Registrar usuario"
+    echo "3. Salir"
+    read -p "Seleccione una opción: " opcion_auth
 
-    case $opcion in
+    case $opcion_auth in
         1)
-            listar_productos
+            if iniciar_sesion; then
+                # Si el login es exitoso, entra al menú principal de productos
+                while true; do
+                    echo ""
+                    echo "--- MENÚ ABM DE PRODUCTOS ---"
+                    echo "1. Listar productos"
+                    echo "2. Agregar producto"
+                    echo "3. Editar un producto existente"
+                    echo "4. Generar reporte HTML"
+                    echo "5. Cerrar sesión"
+                    read -p "Seleccione una opción: " opcion
+
+                    case $opcion in
+                        1) listar_productos ;;
+                        2) agregar_producto ;;
+                        3) editar_producto ;;
+                        4) generar_html ;;
+                        5) 
+                            echo "Cerrando sesión..."
+                            break 
+                            ;;
+                        *) echo "Opción inválida." ;;
+                    esac
+                done
+            fi
             ;;
         2)
-            agregar_producto
+            registrar_usuario
             ;;
         3)
-            editar_producto
-            ;;
-        4)
-            generar_html
-            ;;
-        5)
             echo "Saliendo del programa..."
             exit 0
             ;;
         *)
-            echo "Opción inválida. Intente nuevamente."
+            echo "Opción inválida."
             ;;
     esac
 done
